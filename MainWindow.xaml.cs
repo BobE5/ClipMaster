@@ -452,8 +452,14 @@ namespace ClipMaster
                 _isInternalClipboardChange = true;
                 try
                 {
-                    Clipboard.SetText(CurrentTextBox.Text);
+                    SetClipboardText(CurrentTextBox.Text);
                     _soundService.PlaySuccessSound();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Clipboard error: {ex.Message}");
+                    MessageBox.Show("Failed to copy to clipboard. The clipboard may be in use by another application.",
+                        "Clipboard Error", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
                 finally
                 {
@@ -476,11 +482,11 @@ namespace ClipMaster
                 _isInternalClipboardChange = true;
                 try
                 {
-                    Clipboard.SetText(CurrentTextBox.Text);
-                    
+                    SetClipboardText(CurrentTextBox.Text);
+
                     // Hide window
                     Hide();
-                    
+
                     // Simulate Ctrl+V after a short delay
                     var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
                     timer.Tick += (s, args) =>
@@ -491,9 +497,30 @@ namespace ClipMaster
                     };
                     timer.Start();
                 }
-                catch
+                catch (Exception ex)
                 {
                     _isInternalClipboardChange = false;
+                    System.Diagnostics.Debug.WriteLine($"Paste error: {ex.Message}");
+                    MessageBox.Show("Failed to paste. The clipboard may be in use by another application.",
+                        "Clipboard Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            }
+        }
+
+        private void SetClipboardText(string text)
+        {
+            // Retry clipboard operation with delay if it fails
+            for (int i = 0; i < 10; i++)
+            {
+                try
+                {
+                    Clipboard.SetText(text);
+                    return;
+                }
+                catch (System.Runtime.InteropServices.ExternalException)
+                {
+                    if (i == 9) throw;
+                    System.Threading.Thread.Sleep(10);
                 }
             }
         }
