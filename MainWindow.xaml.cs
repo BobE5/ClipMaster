@@ -255,8 +255,8 @@ namespace ClipMaster
             var dialog = new Microsoft.Win32.OpenFileDialog
             {
                 Title = "Select Notification Sound",
-                Filter = "WAV Files (*.wav)|*.wav|All Files (*.*)|*.*",
-                DefaultExt = ".wav"
+                Filter = "Audio Files (*.mp3;*.wav)|*.mp3;*.wav|MP3 Files (*.mp3)|*.mp3|WAV Files (*.wav)|*.wav|All Files (*.*)|*.*",
+                DefaultExt = ".mp3"
             };
 
             if (dialog.ShowDialog() == true)

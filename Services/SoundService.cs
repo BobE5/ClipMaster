@@ -2,15 +2,16 @@ using System;
 using System.IO;
 using System.Media;
 using System.Threading.Tasks;
+using NAudio.Wave;
 
 namespace ClipMaster.Services
 {
     public class SoundService : IDisposable
     {
-        private SoundPlayer? _clipSound;
-        private SoundPlayer? _errorSound;
-        private bool _isEnabled = true;
+        private SoundPlayer? _wavPlayer;
         private string? _customClipSoundPath;
+        private bool _isEnabled = true;
+        private bool _isMp3;
 
         public bool IsEnabled
         {
@@ -29,22 +30,23 @@ namespace ClipMaster.Services
         {
             try
             {
-                // Try to load custom sounds from app directory
                 var appDir = AppDomain.CurrentDomain.BaseDirectory;
-                var clipSoundPath = Path.Combine(appDir, "Sounds", "clip.wav");
-                var errorSoundPath = Path.Combine(appDir, "Sounds", "error.wav");
 
-                if (File.Exists(clipSoundPath))
+                // Try MP3 first, then WAV
+                var clipMp3Path = Path.Combine(appDir, "Sounds", "clip.mp3");
+                var clipWavPath = Path.Combine(appDir, "Sounds", "clip.wav");
+
+                if (File.Exists(clipMp3Path))
                 {
-                    _clipSound = new SoundPlayer(clipSoundPath);
-                    _clipSound.Load();
-                    _customClipSoundPath = clipSoundPath;
+                    _customClipSoundPath = clipMp3Path;
+                    _isMp3 = true;
                 }
-
-                if (File.Exists(errorSoundPath))
+                else if (File.Exists(clipWavPath))
                 {
-                    _errorSound = new SoundPlayer(errorSoundPath);
-                    _errorSound.Load();
+                    _wavPlayer = new SoundPlayer(clipWavPath);
+                    _wavPlayer.Load();
+                    _customClipSoundPath = clipWavPath;
+                    _isMp3 = false;
                 }
             }
             catch (Exception ex)
@@ -60,11 +62,32 @@ namespace ClipMaster.Services
                 if (!File.Exists(filePath))
                     return false;
 
-                _clipSound?.Dispose();
-                _clipSound = new SoundPlayer(filePath);
-                _clipSound.Load();
-                _customClipSoundPath = filePath;
-                return true;
+                var ext = Path.GetExtension(filePath).ToLowerInvariant();
+
+                if (ext == ".mp3")
+                {
+                    // Test that we can read it
+                    using (var reader = new Mp3FileReader(filePath))
+                    {
+                        // Just verify it opens
+                    }
+                    _wavPlayer?.Dispose();
+                    _wavPlayer = null;
+                    _customClipSoundPath = filePath;
+                    _isMp3 = true;
+                    return true;
+                }
+                else if (ext == ".wav")
+                {
+                    _wavPlayer?.Dispose();
+                    _wavPlayer = new SoundPlayer(filePath);
+                    _wavPlayer.Load();
+                    _customClipSoundPath = filePath;
+                    _isMp3 = false;
+                    return true;
+                }
+
+                return false;
             }
             catch (Exception ex)
             {
@@ -73,69 +96,61 @@ namespace ClipMaster.Services
             }
         }
 
+        private void PlaySound()
+        {
+            try
+            {
+                if (_customClipSoundPath == null)
+                {
+                    SystemSounds.Asterisk.Play();
+                    return;
+                }
+
+                if (_isMp3)
+                {
+                    using var reader = new Mp3FileReader(_customClipSoundPath);
+                    using var waveOut = new WaveOutEvent();
+                    waveOut.Init(reader);
+                    waveOut.Play();
+                    while (waveOut.PlaybackState == PlaybackState.Playing)
+                    {
+                        System.Threading.Thread.Sleep(50);
+                    }
+                }
+                else if (_wavPlayer != null)
+                {
+                    _wavPlayer.Play();
+                }
+                else
+                {
+                    SystemSounds.Asterisk.Play();
+                }
+            }
+            catch
+            {
+                SystemSounds.Asterisk.Play();
+            }
+        }
+
         public void TestClipSound()
         {
-            Task.Run(() =>
-            {
-                try
-                {
-                    if (_clipSound != null)
-                    {
-                        _clipSound.Play();
-                    }
-                    else
-                    {
-                        SystemSounds.Asterisk.Play();
-                    }
-                }
-                catch
-                {
-                    // Ignore sound errors
-                }
-            });
+            Task.Run(() => PlaySound());
         }
 
         public void PlayClipSound()
         {
             if (!_isEnabled) return;
-
-            Task.Run(() =>
-            {
-                try
-                {
-                    if (_clipSound != null)
-                    {
-                        _clipSound.Play();
-                    }
-                    else
-                    {
-                        // Fallback to system sound
-                        SystemSounds.Asterisk.Play();
-                    }
-                }
-                catch
-                {
-                    // Ignore sound errors
-                }
-            });
+            Task.Run(() => PlaySound());
         }
 
         public void PlayErrorSound()
         {
             if (!_isEnabled) return;
-
             Task.Run(() =>
             {
                 try
                 {
-                    if (_errorSound != null)
-                    {
-                        _errorSound.Play();
-                    }
-                    else
-                    {
-                        SystemSounds.Exclamation.Play();
-                    }
+                    SystemSounds.Exclamation.Play();
                 }
                 catch
                 {
@@ -147,7 +162,6 @@ namespace ClipMaster.Services
         public void PlaySuccessSound()
         {
             if (!_isEnabled) return;
-
             Task.Run(() =>
             {
                 try
@@ -163,8 +177,7 @@ namespace ClipMaster.Services
 
         public void Dispose()
         {
-            _clipSound?.Dispose();
-            _errorSound?.Dispose();
+            _wavPlayer?.Dispose();
         }
     }
 }
